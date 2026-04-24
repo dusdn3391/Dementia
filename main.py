@@ -34,7 +34,6 @@ plt.rcParams["axes.unicode_minus"] = False
 
 # =========================================================
 # 2. 파일 읽기
-#    main.py와 같은 폴더에 csv 파일을 두면 됨
 # =========================================================
 facility = pd.read_csv("facility.csv", encoding="cp949")
 resident = pd.read_csv("resident.csv", encoding="cp949")
@@ -71,7 +70,6 @@ def normalize_sido(x):
 
 # =========================================================
 # 5. facility 전처리
-#    예: '서울특별시 종로구 구기동' -> '서울특별시 종로구'
 # =========================================================
 facility_code_col = find_col(facility, ["장기요양기관코드", "기관코드"])
 facility_addr_col = find_col(facility, ["시도 시군구 법정동명", "주소", "소재지", "기관주소"])
@@ -123,7 +121,6 @@ else:
 
 resident["기관코드"] = resident["기관코드"].astype(str).str.strip()
 
-# 🔥 여기 추가 (핵심 수정)
 resident["정원"] = (
     resident["정원"]
     .astype(str)
@@ -138,11 +135,9 @@ resident["현원"] = (
     .str.strip()
 )
 
-# 숫자 변환
 resident["정원"] = pd.to_numeric(resident["정원"], errors="coerce").fillna(0)
 resident["현원"] = pd.to_numeric(resident["현원"], errors="coerce").fillna(0)
 
-# 정원이 0인데 현원이 있는 경우 → 정원을 현원으로 대체
 resident.loc[(resident["정원"] == 0) & (resident["현원"] > 0), "정원"] = resident["현원"]
 
 resident = resident[["기관코드", "정원", "현원"]]
@@ -169,9 +164,14 @@ sigungu_col = find_col(dementia, ["시군구", "시군구명", "구군"], requir
 gender_col = find_col(dementia, ["성별"], required=False)
 age_col = find_col(dementia, ["연령별", "연령구간"], required=False)
 patient_col = find_col(dementia, ["추정치매환자수", "치매환자수", "환자수", "추정환자수"])
+elder_col = find_col(dementia, ["노인인구수", "노인인구", "65세이상인구수", "고령인구수", "고령인구"], required=False)
 
-rename_map = {patient_col: "추정치매환자수"}
+rename_map = {
+    patient_col: "추정치매환자수"
+}
 
+if elder_col:
+    rename_map[elder_col] = "노인인구수"
 if year_col:
     rename_map[year_col] = "연도"
 if sido_col:
@@ -207,21 +207,41 @@ target_ages = [
 
 dementia = dementia[dementia["연령별"].isin(target_ages)].copy()
 
+dementia["추정치매환자수"] = (
+    dementia["추정치매환자수"]
+    .astype(str)
+    .str.replace(",", "", regex=False)
+    .str.strip()
+)
 dementia["추정치매환자수"] = pd.to_numeric(dementia["추정치매환자수"], errors="coerce").fillna(0)
+
+if "노인인구수" not in dementia.columns:
+    raise KeyError("dementia 데이터에 '노인인구수' 컬럼이 없습니다. 실제 컬럼명을 확인해 주세요.")
+
+dementia["노인인구수"] = (
+    dementia["노인인구수"]
+    .astype(str)
+    .str.replace(",", "", regex=False)
+    .str.strip()
+)
+dementia["노인인구수"] = pd.to_numeric(dementia["노인인구수"], errors="coerce").fillna(0)
 
 remove_words = ["전국", "전체", "합계", "소계"]
 dementia = dementia[~dementia["시도"].isin(remove_words)].copy()
 dementia = dementia[~dementia["시군구"].isin(remove_words)].copy()
 
 dementia = dementia[dementia["시군구"] != dementia["시도"]].copy()
-# =========================================================
-# 시군구를 '시/군' 단위로 통일 (구 제거)
-# =========================================================
-dementia["시군구"] = dementia["시군구"].str.replace(r"(.*시).*", r"\1", regex=True)
 
-# '시', '군'만 남기기
+# =========================================================
+# 시군구 단위 정리
+# - 경기도 용인시 수지구 → 경기도 용인시
+# - 서울특별시 마포구 → 서울특별시 마포구 유지
+# =========================================================
+dementia["시군구"] = dementia["시군구"].astype(str).str.strip()
+dementia["시군구"] = dementia["시군구"].apply(lambda x: x.split()[0] if len(x.split()) > 0 else x)
+
 dementia = dementia[
-    dementia["시군구"].str.endswith(("시", "군"))
+    dementia["시군구"].str.endswith(("시", "군", "구"))
 ].copy()
 
 if "연도" in dementia.columns:
@@ -233,6 +253,7 @@ if "연도" in dementia.columns:
 dementia["지역"] = dementia["시도"].astype(str).str.strip() + " " + dementia["시군구"].astype(str).str.strip()
 
 dementia_region = dementia.groupby(["지역", "시도", "시군구"], as_index=False).agg(
+    노인인구수=("노인인구수", "sum"),
     치매환자수=("추정치매환자수", "sum")
 )
 
@@ -246,14 +267,27 @@ final = dementia_region.merge(
     how="left"
 ).fillna(0)
 
+final["노인인구수"] = pd.to_numeric(final["노인인구수"], errors="coerce").fillna(0)
 final["총정원"] = pd.to_numeric(final["총정원"], errors="coerce").fillna(0)
 final["총현원"] = pd.to_numeric(final["총현원"], errors="coerce").fillna(0)
 final["치매환자수"] = pd.to_numeric(final["치매환자수"], errors="coerce").fillna(0)
 
+# 노인인구 대비 추정치매환자수
+final["노인대비_치매비율"] = (
+    final["치매환자수"] / final["노인인구수"].replace(0, np.nan)
+).replace([np.inf, -np.inf], np.nan).fillna(0)
+
+final["노인대비_치매비율(%)"] = (final["노인대비_치매비율"] * 100).round(2)
+
+# 치매환자 대비 요양시설 수용 가능 여부
 final["정원차이"] = final["총정원"] - final["치매환자수"]
 final["부족인원"] = final["치매환자수"] - final["총정원"]
+
+final["수용률"] = (
+    final["총정원"] / final["치매환자수"].replace(0, np.nan)
+).replace([np.inf, -np.inf], np.nan).fillna(0).round(2)
+
 final["판단"] = np.where(final["총정원"] >= final["치매환자수"], "적당", "부족")
-final["정원대비비율"] = (final["총정원"] / final["치매환자수"].replace(0, np.nan)).round(2)
 
 final = final.sort_values(["판단", "부족인원"], ascending=[True, False]).reset_index(drop=True)
 
@@ -285,6 +319,18 @@ plt.ylabel("인원 수")
 plt.xticks(rotation=75)
 plt.legend()
 plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.show()
+
+ratio_top20 = final.sort_values("노인대비_치매비율(%)", ascending=False).head(20)
+
+plt.figure(figsize=(18, 7))
+plt.bar(ratio_top20["지역"], ratio_top20["노인대비_치매비율(%)"])
+plt.title("노인인구 대비 치매환자 비율 TOP 20")
+plt.xlabel("지역")
+plt.ylabel("노인대비 치매비율(%)")
+plt.xticks(rotation=75)
+plt.grid(axis="y", linestyle="--", alpha=0.4)
 plt.tight_layout()
 plt.show()
 
@@ -343,10 +389,14 @@ for _, row in final.iterrows():
 
     popup_text = f"""
     <b>{row['지역']}</b><br>
+    노인인구수: {int(row['노인인구수']):,}명<br>
     치매환자수: {int(row['치매환자수']):,}명<br>
+    노인대비 치매비율: {row['노인대비_치매비율(%)']}%<br>
     총정원: {int(row['총정원']):,}명<br>
+    총현원: {int(row['총현원']):,}명<br>
     기관수: {int(row['기관수']):,}개<br>
-    정원차이: {int(row['정원차이']):,}명<br>
+    수용률: {row['수용률']}<br>
+    부족인원: {int(row['부족인원']):,}명<br>
     판단: {row['판단']}
     """
 
@@ -357,7 +407,7 @@ for _, row in final.iterrows():
         fill=True,
         fill_color=color,
         fill_opacity=0.6,
-        popup=folium.Popup(popup_text, max_width=300),
+        popup=folium.Popup(popup_text, max_width=330),
         tooltip=row["지역"]
     ).add_to(korea_map)
 
@@ -379,12 +429,12 @@ korea_map.get_root().html.add_child(folium.Element(legend_html))
 # =========================================================
 # 12. 결과 저장
 # =========================================================
-final.to_csv("지역별_치매환자수_요양기관정원_비교_통일본.csv", index=False, encoding="utf-8-sig")
+final.to_csv("지역별_노인인구_치매환자수_요양기관정원_비교.csv", index=False, encoding="utf-8-sig")
 
 map_path = os.path.abspath("치매_요양시설_지도.html")
 korea_map.save(map_path)
 
-print("CSV 저장 완료: 지역별_치매환자수_요양기관정원_비교_통일본.csv")
+print("CSV 저장 완료: 지역별_노인인구_치매환자수_요양기관정원_비교.csv")
 print(f"지도 저장 완료: {map_path}")
 
 
