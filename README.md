@@ -116,15 +116,15 @@ python main.py
 ## 📊 결과
 
 ### 🔴 요양시설 부족 지역 TOP 20
-<img src="https://github.com/user-attachments/assets/bb0933ca-0f9a-4d2b-80d5-69ad569fbf0a">
+<img src="https://github.com/user-attachments/assets/6243743b-014d-4ebc-aa22-0eedf1aeded3">
 
 ### 📈 치매환자수 vs 요양시설 정원 비교
-<img src="https://github.com/user-attachments/assets/33e06530-5e16-41cb-a065-90cb885a5729">
+<img src="https://github.com/user-attachments/assets/f2eb64e3-2ef6-4a75-a14d-14b0d34ef083">
 
 ### 🗺️ 지도 시각화
 - 🔴 부족 지역
 - 🔵 적정 지역
-<img src="https://github.com/user-attachments/assets/7be7c9e6-9468-4d4d-9ec4-cc13b058d924">
+<img src="https://github.com/user-attachments/assets/9a2fb9ec-a8cd-4616-a14f-9ab4087e1f7f">
 
 ---
 
