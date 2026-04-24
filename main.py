@@ -122,6 +122,23 @@ else:
     resident["현원"] = 0
 
 resident["기관코드"] = resident["기관코드"].astype(str).str.strip()
+
+# 🔥 여기 추가 (핵심 수정)
+resident["정원"] = (
+    resident["정원"]
+    .astype(str)
+    .str.replace(",", "", regex=False)
+    .str.strip()
+)
+
+resident["현원"] = (
+    resident["현원"]
+    .astype(str)
+    .str.replace(",", "", regex=False)
+    .str.strip()
+)
+
+# 숫자 변환
 resident["정원"] = pd.to_numeric(resident["정원"], errors="coerce").fillna(0)
 resident["현원"] = pd.to_numeric(resident["현원"], errors="coerce").fillna(0)
 
