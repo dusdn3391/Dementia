@@ -194,7 +194,15 @@ dementia = dementia[~dementia["시도"].isin(remove_words)].copy()
 dementia = dementia[~dementia["시군구"].isin(remove_words)].copy()
 
 dementia = dementia[dementia["시군구"] != dementia["시도"]].copy()
-dementia = dementia[dementia["시군구"].str.endswith(("구", "군", "시"))].copy()
+# =========================================================
+# 시군구를 '시/군' 단위로 통일 (구 제거)
+# =========================================================
+dementia["시군구"] = dementia["시군구"].str.replace(r"(.*시).*", r"\1", regex=True)
+
+# '시', '군'만 남기기
+dementia = dementia[
+    dementia["시군구"].str.endswith(("시", "군"))
+].copy()
 
 if "연도" in dementia.columns:
     dementia["연도"] = pd.to_numeric(dementia["연도"], errors="coerce")
