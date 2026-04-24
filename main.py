@@ -142,6 +142,9 @@ resident["현원"] = (
 resident["정원"] = pd.to_numeric(resident["정원"], errors="coerce").fillna(0)
 resident["현원"] = pd.to_numeric(resident["현원"], errors="coerce").fillna(0)
 
+# 정원이 0인데 현원이 있는 경우 → 정원을 현원으로 대체
+resident.loc[(resident["정원"] == 0) & (resident["현원"] > 0), "정원"] = resident["현원"]
+
 resident = resident[["기관코드", "정원", "현원"]]
 
 
